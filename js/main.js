@@ -150,6 +150,7 @@ $( document ).ready(function() {
     // Define settings call back
     $('#cpparams').submit(function(e) {
         const formData = new FormData(e.target);
+        console.log("Hellow")
         for (var pair of formData.entries()) {
             setKey(pair[0],pair[1])
         }

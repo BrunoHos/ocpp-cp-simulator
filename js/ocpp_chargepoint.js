@@ -50,8 +50,8 @@ function isEmpty(str) {
 // @param key The key name
 // @param value The key value
 //
-function setSessionKey(key,value) {
-    sessionStorage.setItem(key,value)
+function setSessionKey(key, value) {
+    sessionStorage.setItem(key, value)
 }
 
 //
@@ -59,10 +59,10 @@ function setSessionKey(key,value) {
 // @param key The key name
 // @return The key value
 //
-function getSessionKey(key,default_value="") {
+function getSessionKey(key, default_value = "") {
     var v = sessionStorage.getItem(key);
     if (!v) {
-        v=default_value;
+        v = default_value;
     }
     return v
 }
@@ -72,8 +72,8 @@ function getSessionKey(key,default_value="") {
 // @param key The key name
 // @param value The key value
 //
-function setKey(key,value) {
-    localStorage.setItem(key,value)
+function setKey(key, value) {
+    localStorage.setItem(key, value)
 }
 
 //
@@ -81,10 +81,10 @@ function setKey(key,value) {
 // @param key The key name
 // @return The key value
 //
-function getKey(key,default_value="") {
+function getKey(key, default_value = "") {
     var v = localStorage.getItem(key);
     if (!v) {
-        v=default_value;
+        v = default_value;
     }
     return v
 }
@@ -95,18 +95,18 @@ function getKey(key,default_value="") {
 //
 //
 export default class ChargePoint {
-    
+
     //
     // Constructor
     // @param a callback function that will receive debug logging information
     //
     constructor() {
-        this._websocket            = null;
-        this._heartbeat            = null;
-        this._statusChangeCb       = null;
+        this._websocket = null;
+        this._heartbeat = null;
+        this._statusChangeCb = null;
         this._availabilityChangeCb = null;
-        this._loggingCb            = null;
-    } 
+        this._loggingCb = null;
+    }
 
     //
     // Set the StatusChange callback, this will be triggered when the internal status
@@ -116,7 +116,7 @@ export default class ChargePoint {
     setStatusChangeCallback(cb) {
         this._statusChangeCb = cb;
     }
-    
+
     //
     // Set the logging callback, this will be triggered when the charge point want to output/log some information
     // @param A callback function which takes a string argument ("message to log")
@@ -124,7 +124,7 @@ export default class ChargePoint {
     setLoggingCallback(cb) {
         this._loggingCb = cb;
     }
-    
+
     //
     // Set the logging callback, this will be triggered when the OCPP server triggers a SetAvailability message
     // @param A callback function which takes two arguments (int + string): (connectorId,"new availability")
@@ -132,13 +132,13 @@ export default class ChargePoint {
     setAvailabilityChangeCallback(cb) {
         this._availabilityChangeCb = cb;
     }
-    
+
     //
     // output a log to the logging callback if any
     //
     logMsg(msg) {
         if (this._loggingCb) {
-            msg = '[OCPP] '+msg;
+            msg = '[OCPP] ' + msg;
             this._loggingCb(msg);
         }
     }
@@ -148,24 +148,24 @@ export default class ChargePoint {
     // @param s The new status value
     // @param msg Optional message (for information purpose)
     //
-    setStatus(s,msg="") {
-        setSessionKey(ocpp.KEY_CP_STATUS,s);
+    setStatus(s, msg = "") {
+        setSessionKey(ocpp.KEY_CP_STATUS, s);
         if (this._statusChangeCb) {
-            this._statusChangeCb(s,msg);
+            this._statusChangeCb(s, msg);
         }
     }
-    
+
     //
     // Handle a command coming from the OCPP server
     //
-    handleCallRequest(id,request,payload) {
-        var respOk = JSON.stringify([3,id,{"status": "Accepted"}]);
-        var connectorId=0;
+    handleCallRequest(id, request, payload) {
+        var respOk = JSON.stringify([3, id, { "status": "Accepted" }]);
+        var connectorId = 0;
         switch (request) {
             case "Reset":
                 //Reset type can be SOFT, HARD
-                var rstType=payload.type;
-                this.logMsg("Reset Request: type="+rstType);
+                var rstType = payload.type;
+                this.logMsg("Reset Request: type=" + rstType);
                 this.wsSendData(respOk);
                 this.wsDisconnect();
                 break;
@@ -174,14 +174,17 @@ export default class ChargePoint {
                 console.log("RemoteStartTransaction");
                 //Need to get idTag, connectorId (map - ddata[3])
                 var tagId = payload.idTag;
-                this.logMsg("Reception of a RemoteStartTransaction request for tag "+tagId);
+                this.logMsg("Reception of a RemoteStartTransaction request for tag " + tagId);
+                // add Accept and reject logic
                 this.wsSendData(respOk);
+                // handle both cases where cable is already plugged in 
+                // or when the user plugs in the cable after 10 seconds
                 this.startTransaction(tagId);
                 break;
 
             case "RemoteStopTransaction":
                 var stop_id = payload.transactionId;
-                this.logMsg("Reception of a RemoteStopTransaction request for transaction "+stop_id);
+                this.logMsg("Reception of a RemoteStopTransaction request for transaction " + stop_id);
                 this.wsSendData(respOk);
                 this.stopTransactionWithId(stop_id);
                 break;
@@ -189,32 +192,48 @@ export default class ChargePoint {
             case "TriggerMessage":
                 var requestedMessage = payload.requestedMessage;
                 // connectorId is optionnal thus must check if it is provided
-                if(payload["connectorId"]) { 
+                if (payload["connectorId"]) {
                     connectorId = payload["connectorId"];
                 }
-                this.logMsg("Reception of a TriggerMessage request ("+requestedMessage+")");
+                this.logMsg("Reception of a TriggerMessage request (" + requestedMessage + ")");
                 this.wsSendData(respOk);
-                this.triggerMessage(requestedMessage,connectorId);
+                this.triggerMessage(requestedMessage, connectorId);
                 break;
-                
+
             case "ChangeAvailability":
-                var avail=payload.type;
-                connectorId=payload.connectorId;
-                this.logMsg("Reception of a ChangeAvailability request (connector "+connectorId+" "+avail+")");
+                var avail = payload.type;
+                connectorId = payload.connectorId;
+                this.logMsg("Reception of a ChangeAvailability request (connector " + connectorId + " " + avail + ")");
                 this.wsSendData(respOk);
-                this.setConnectorAvailability(Number(connectorId),avail)
+                this.setConnectorAvailability(Number(connectorId), avail)
                 break;
-                
+
             case "UnlockConnector":
                 this.wsSendData(respOk);
-                // connector_locked = false;
-                // $('.indicator').hide();
-                //$('#yellow').show();
-                //logMsg("Connector status changed to: "+connector_locked);
+                break;
+
+            case "GetConfiguration":
+                var requestedMessage = payload.requestedMessage;
+                this.logMsg("Reception of a GetConfiguration request (" + requestedMessage + ")");
+                const configuration = [
+                    3,
+                    id,
+                    {
+                        "unknownKey": [],
+                        "configurationKey": [
+                            {
+                                "key": "HeartbeatInterval",
+                                "readonly": false,
+                                "value": "900"
+                            }
+                        ]
+                    }
+                ];
+                this.wsSendData(JSON.stringify(configuration));
                 break;
 
             default:
-                var error = JSON.stringify([4,id,"NotImplemented"]);
+                var error = JSON.stringify([4, id, "NotImplemented"]);
                 this.wsSendData(error);
                 break;
         }
@@ -245,13 +264,13 @@ export default class ChargePoint {
             else {
                 this.logMsg('Authorization OK');
                 this.setStatus(ocpp.CP_AUTHORIZED);
-            } 
+            }
         }
         else if (la == "startTransaction") {
             var transactionId = payload.transactionId;
-            setSessionKey('TransactionId',transactionId);
-            this.setStatus(ocpp.CP_INTRANSACTION,'TransactionId: '+transactionId)
-            this.logMsg("Transaction id is "+transactionId);
+            setSessionKey('TransactionId', transactionId);
+            this.setStatus(ocpp.CP_INTRANSACTION, 'TransactionId: ' + transactionId)
+            this.logMsg("Transaction id is " + transactionId);
         }
     }
 
@@ -260,19 +279,19 @@ export default class ChargePoint {
     // @param errCode The error code
     // @param errMsg  The clear text description of the error
     //
-    handleCallError(errCode,errMsg) {
-        this.setStatus(ocpp.CP_ERROR,'ErrorCode: '+errCode+' ('+errMsg+')');
+    handleCallError(errCode, errMsg) {
+        this.setStatus(ocpp.CP_ERROR, 'ErrorCode: ' + errCode + ' (' + errMsg + ')');
     }
 
     //
     // Send an Authorize call to the OCPP Server
     // @param tagId the id of the RFID tag to authorize
     //
-    authorize(tagId){
+    authorize(tagId) {
         this.setLastAction("Authorize");
         this.logMsg("Requesting authorization for tag " + tagId);
-        var id=generateId();
-        var Auth = JSON.stringify([2,id,"Authorize", {
+        var id = generateId();
+        var Auth = JSON.stringify([2, id, "Authorize", {
             "idTag": tagId
         }]);
         this.wsSendData(Auth);
@@ -282,62 +301,63 @@ export default class ChargePoint {
     // Send a StartTransaction call to the OCPP Server
     // @param tagId the id of the RFID tag currently authorized on the CP
     //
-    startTransaction(tagId,connectorId=1,reservationId=0){
+    startTransaction(tagId, connectorId = 1, reservationId = 0) {
         this.setLastAction("startTransaction");
         this.setStatus(ocpp.CP_INTRANSACTION);
         var mv = this.meterValue();
-        var id=generateId();
-        var strtT = JSON.stringify([2,id,"StartTransaction", {
+        var id = generateId();
+        var strtT = JSON.stringify([2, id, "StartTransaction", {
             "connectorId": connectorId,
             "idTag": tagId,
-            "timestamp": formatDate(new Date()),
             "meterStart": mv,
+            "timestamp": luxon.DateTime.utc().toISO(),
             "reservationId": reservationId
         }]);
-        this.logMsg("Starting Transaction for tag "+tagId+" (connector:"+connectorId+", meter value="+mv+")");
+        this.logMsg("Starting Transaction for tag " + tagId + " (connector:" + connectorId + ", meter value=" + mv + ")");
         this.wsSendData(strtT);
-        this.setConnectorStatus(connectorId,ocpp.CONN_CHARGING);
+        this.setConnectorStatus(connectorId, ocpp.CONN_CHARGING);
     }
 
     //
     // Send a StopTransaction call to the OCPP Server
     // @param tagId the id of the RFID tag currently authorized on the CP
     //
-    stopTransaction(tagId){
-        var transactionId=getSessionKey("TransactionId");
-        this.stopTransactionWithId(transactionId,tagId);
+    stopTransaction(tagId) {
+        var transactionId = getSessionKey("TransactionId");
+        this.stopTransactionWithId(transactionId, tagId);
     }
-    
+
     //
     // Send a StopTransaction call to the OCPP Server
     // @param transactionId the id of the transaction to stop
     // @param tagId the id of the RFID tag currently authorized on the CP
     //
-    stopTransactionWithId(transactionId,tagId="DEADBEEF"){
+    stopTransactionWithId(transactionId, tagId = "DEADBEEF") {
         this.setLastAction("stopTransaction");
         this.setStatus(ocpp.CP_AUTHORIZED);
-        var mv=this.meterValue();
-        this.logMsg("Stopping Transaction with id "+transactionId+" (meterValue="+mv+")");
-        var id=generateId();
-        var stopParams = {           
+        var mv = this.meterValue();
+        this.logMsg("Stopping Transaction with id " + transactionId + " (meterValue=" + mv + ")");
+        var id = generateId();
+        var stopParams = {
             "transactionId": transactionId,
-            "timestamp": formatDate(new Date()),
-            "meterStop": mv};
+            "timestamp": luxon.DateTime.utc().toISO(),
+            "meterStop": mv
+        };
         if (!isEmpty(tagId)) {
-            stopParams["idTag"]=tagId;
+            stopParams["idTag"] = tagId;
         }
-        var stpT = JSON.stringify([2, id, "StopTransaction",stopParams]);
+        var stpT = JSON.stringify([2, id, "StopTransaction", stopParams]);
         this.wsSendData(stpT);
-        this.setConnectorStatus(1,ocpp.CONN_AVAILABLE);
+        this.setConnectorStatus(1, ocpp.CONN_AVAILABLE);
     }
-    
+
     //
     // Implement the TriggerMessage request
     // @param requestedMessage the message that shall be triggered
     // @param c connectorId concerned by the message (if any)
     //
-    triggerMessage(requestedMessage,c=0) {
-        switch(requestedMessage) {
+    triggerMessage(requestedMessage, c = 0) {
+        switch (requestedMessage) {
             case 'BootNotification':
                 this.sendBootNotification();
                 break;
@@ -355,18 +375,18 @@ export default class ChargePoint {
             case 'FirmwareStatusNotification':
                 break;
             default:
-                this.logMsg("Requested Message not supported: "+requestedMessage);
+                this.logMsg("Requested Message not supported: " + requestedMessage);
                 break;
         }
     }
-    
+
     //
     // Send a BootNotification call to the OCPP Server
     //
-    sendBootNotification(){
+    sendBootNotification() {
         this.logMsg('Sending BootNotification');
         this.setLastAction("BootNotification");
-        var id=generateId();
+        var id = generateId();
         var bn_req = JSON.stringify([2, id, "BootNotification", {
             "chargePointVendor": "Elmo",
             "chargePointModel": "Elmo-Virtual1",
@@ -383,24 +403,24 @@ export default class ChargePoint {
 
     // @todo: Shitty code to remove asap => real transaction support
     setLastAction(action) {
-        setSessionKey("LastAction",action);
+        setSessionKey("LastAction", action);
     }
     // @todo: Shitty code to remove asap
-    getLastAction(){
+    getLastAction() {
         return getSessionKey("LastAction");
     }
-    
+
     //
     // Setup heartbeat sending at the appropriate period
     // (clearing any previous setup)
     // @param period The heartbeat period in seconds
     //
-    setHeartbeat(period){
-        this.logMsg("Setting heartbeat period to "+period+"s");
+    setHeartbeat(period) {
+        this.logMsg("Setting heartbeat period to " + period + "s");
         if (this._heartbeat) {
             clearInterval(this._heartbeat);
         }
-        this._heartbeat = setInterval(this.sendHeartbeat,period*1000);
+        this._heartbeat = setInterval(this.sendHeartbeat, period * 1000);
     }
 
     //
@@ -408,43 +428,43 @@ export default class ChargePoint {
     //
     sendHeartbeat() {
         this.setLastAction("Heartbeat");
-        var id=generateId();
-        var HB = JSON.stringify([2,id,"Heartbeat", {}]);
+        var id = generateId();
+        var HB = JSON.stringify([2, id, "Heartbeat", {}]);
         this.logMsg('Heartbeat');
         this.wsSendData(HB);
     }
-    
+
     //
     // Send data to the server (will be also logged in console)
     // @data the data to send 
     //
     wsSendData(data) {
-        console.log("SEND: "+data);
+        console.log("SEND: " + data);
         if (this._websocket) {
             this._websocket.send(data);
         }
         else {
-            this.setStatus(ocpp.CP_ERROR,'No connection to OCPP server')
+            this.setStatus(ocpp.CP_ERROR, 'No connection to OCPP server')
         }
     }
-    
+
     //
     // @return the internal state of the CP
     //
     status() {
         return getSessionKey(ocpp.KEY_CP_STATUS);
     }
-    
+
     //
     // Open the websocket and set internal state accordingly
     // @param wsurl The URL of the OCPP server
     // @param cpid  The charge point identifief (as defined in OCPP server)
     //
-    wsConnect(wsurl,cpid) {
+    wsConnect(wsurl, cpid) {
         if (this._websocket) {
-            this.setStatus(ocpp.CP_ERROR,'Socket already opened. Closing it. Retry later');
+            this.setStatus(ocpp.CP_ERROR, 'Socket already opened. Closing it. Retry later');
             this._websocket.close(3001);
-        } 
+        }
         else {
 
             this._websocket = new WebSocket(wsurl + "" + cpid, ["ocpp1.6", "ocpp1.5"]);
@@ -453,7 +473,7 @@ export default class ChargePoint {
             //
             // OnOpen Callback
             //
-            this._websocket.onopen = function(evt) {
+            this._websocket.onopen = function (evt) {
                 self.setStatus(ocpp.CP_CONNECTING);
                 self.sendBootNotification();
             }
@@ -461,16 +481,16 @@ export default class ChargePoint {
             //
             // OnError Callback
             //                  
-            this._websocket.onerror = function(evt) {
-                switch(self._websocket.readyState) {
+            this._websocket.onerror = function (evt) {
+                switch (self._websocket.readyState) {
                     case 1: // OPEN
-                        self.setStatus(ocpp.CP_ERROR,'ws normal error: ' + evt.type)
+                        self.setStatus(ocpp.CP_ERROR, 'ws normal error: ' + evt.type)
                         break;
                     case 3: // CLOSED
-                        self.setStatus(ocpp.CP_ERROR,'connection cannot be opened: ' + evt.type)
+                        self.setStatus(ocpp.CP_ERROR, 'connection cannot be opened: ' + evt.type)
                         break;
                     default:
-                        self.setStatus(ocpp.CP_ERROR,'websocket error: ' + evt.type)
+                        self.setStatus(ocpp.CP_ERROR, 'websocket error: ' + evt.type)
                         break;
                 }
 
@@ -480,27 +500,27 @@ export default class ChargePoint {
             // OnMessage Callback
             // Decode the type of message and pass it to the appropriate handler
             // 
-            this._websocket.onmessage = function(msg) {
-                console.log("RECEIVE: "+msg.data);
+            this._websocket.onmessage = function (msg) {
+                console.log("RECEIVE: " + msg.data);
                 var ddata = (JSON.parse(msg.data));
 
                 // Decrypt Message Type
-                var msgType=ddata[0];
-                switch(msgType) {
+                var msgType = ddata[0];
+                switch (msgType) {
                     case 2: // CALL 
-                        var id=ddata[1];
-                        var request=ddata[2];
-                        var payload=null;
+                        var id = ddata[1];
+                        var request = ddata[2];
+                        var payload = null;
                         if (ddata.length > 3) {
                             payload = ddata[3];
                         }
-                        self.handleCallRequest(id,request,payload);
+                        self.handleCallRequest(id, request, payload);
                         break;
                     case 3: // CALLRESULT 
                         self.handleCallResult(ddata[2]);
                         break;
                     case 4: // CALLERROR
-                        self.handleCallError(ddata[2],ddata[3]);
+                        self.handleCallError(ddata[2], ddata[3]);
                         break;
                 }
             }
@@ -508,13 +528,13 @@ export default class ChargePoint {
             //
             // OnClose Callback
             //   
-            this._websocket.onclose = function(evt) {
+            this._websocket.onclose = function (evt) {
                 if (evt.code == 3001) {
                     self.setStatus(ocpp.CP_DISCONNECTED);
                     self.logMsg('Connection closed');
                     self._websocket = null;
                 } else {
-                    self.setStatus(ocpp.CP_ERROR,'Connection error: ' + evt.code);
+                    self.setStatus(ocpp.CP_ERROR, 'Connection error: ' + evt.code);
                     self.logMsg('Connection error: ' + evt.code);
                     self._websocket = null;
                 }
@@ -531,40 +551,61 @@ export default class ChargePoint {
         }
         this.setStatus(ocpp.CP_DISCONNECTED);
     }
-    
+
     //
     // Return the meter value
     //
     meterValue() {
-        return (getSessionKey(ocpp.KEY_METER_VALUE,"0"));
+        return (parseInt(getSessionKey(ocpp.KEY_METER_VALUE, "0")));
     }
-    
+
     //
     // Set the meter value (and optionnally update the OCPP server with it)
     // @param v the new meter value
     // @param updateServer if set to true, update the server with the new meter value
     //
-    setMeterValue(v,updateServer=false) {
-        setSessionKey(ocpp.KEY_METER_VALUE,v);
+    setMeterValue(v, updateServer = false) {
+        setSessionKey(ocpp.KEY_METER_VALUE, v);
         if (updateServer) {
             this.sendMeterValue();
         }
     }
-    
+
     //
     // update the server with the internal meter value
     //
-    sendMeterValue(c=0) {
-        var mvreq={};
+    sendMeterValue(c = 0) {
+        var mvreq = {};
         this.setLastAction("MeterValues");
-        var meter=getSessionKey(ocpp.KEY_METER_VALUE);
-        var id=generateId();
+        var meter = getSessionKey(ocpp.KEY_METER_VALUE);
+        var id = generateId();
         var ssid = getSessionKey('TransactionId');
-        mvreq = JSON.stringify([2, id, "MeterValues", {"connectorId": c, "transactionId": ssid, "meterValue": [{"timestamp": formatDate(new Date()), "sampledValue": [{"value": meter}]}]}]);
-        this.logMsg("Send Meter Values: "+meter+" (connector " +c+")");
+        mvreq = JSON.stringify([
+            2,
+            id,
+            "MeterValues",
+            {
+                "connectorId": c,
+                "transactionId": ssid,
+                "meterValue": [{
+                    "sampledValue": [
+                        {
+                            "value": meter,
+                            "context": "Sample.Periodic",
+                            "format": "Raw",
+                            "measurand": "Current.Offered",
+                            "location": "Outlet",
+                            "unit": "A"
+                        }
+                    ],
+                    "timestamp": luxon.DateTime.utc().toISO(),
+                }]
+            }
+        ]);
+        this.logMsg("Send Meter Values: " + meter + " (connector " + c + ")");
         this.wsSendData(mvreq);
     }
-    
+
     //
     // Get the status of given connector
     // @param c connectorId
@@ -574,51 +615,53 @@ export default class ChargePoint {
         var key = ocpp.KEY_CONN_STATUS + c;
         return getSessionKey(key);
     }
-    
+
     //
     // Update status of given connector
     // @param c connectorId
     // @param new status for connector
     // @param updateServer if true, also send a StatusNotification to server
     //
-    setConnectorStatus(c,newStatus,updateServer=false) {
+    setConnectorStatus(c, newStatus, updateServer = false) {
         var key = ocpp.KEY_CONN_STATUS + c;
-        setSessionKey(key,newStatus);
-        if(updateServer) {
-            this.sendStatusNotification(c,newStatus);
+        setSessionKey(key, newStatus);
+        if (updateServer) {
+            this.sendStatusNotification(c, newStatus);
         }
     }
-    
+
     //
     // Send a StatusNotification to the server with the new status of the specified connector
     // @param c The connector id (0 for CP, 1 for connector 1, etc...)
     //
     sendStatusNotification(c) {
-        var st=this.connectorStatus(c);
+        var st = this.connectorStatus(c);
         this.setLastAction("StatusNotification");
-        var id=generateId();
+        var id = generateId();
         var sn_req = JSON.stringify([2, id, "StatusNotification", {
             "connectorId": c,
             "status": st,
             "errorCode": "NoError",
             "info": "",
-            "timestamp": formatDate(new Date()),
+            "timestamp": luxon.DateTime.utc().toISO(),
             "vendorId": "",
             "vendorErrorCode": ""
         }]);
-        this.logMsg("Sending StatusNotification for connector "+c+": "+st);
+        this.logMsg("Sending StatusNotification for connector " + c + ": " + st);
         this.wsSendData(sn_req);
     }
-    
+    //[2,"n6xoSNnVilR684LnBNYF4C5D5BgxYkYYknsU","StatusNotification",{"connectorId":0,"status":"Available","errorCode":"NoError","info":"","timestamp":"2023-10-17T08:45:43.774Z","vendorId":"","vendorErrorCode":""}]
+    //[2,"B7iniEeNBpD7zW45us3Knxw5dDKxL5RsxTH7","StatusNotification",{"connectorId":0,"status":"Available","errorCode":"NoError","info":"","timestamp":"2023-10-17T08:48:02.075Z","vendorId":"","vendorErrorCode":""}]
+
     //
     // Get availability for given connector
     // (availability is persistent thus stored in local storage instead of session storage)
     // @param c connector id
     // @return connector availability
     //
-    availability(c=0) {
+    availability(c = 0) {
         var key = ocpp.KEY_CONN_AVAILABILITY + c;
-        return getKey(key,ocpp.AVAILABITY_OPERATIVE);
+        return getKey(key, ocpp.AVAILABITY_OPERATIVE);
     }
 
     //
@@ -627,21 +670,21 @@ export default class ChargePoint {
     // @param c connectorId
     // @param new availability for connector
     //
-    setConnectorAvailability(c,newAvailability) {
+    setConnectorAvailability(c, newAvailability) {
         var key = ocpp.KEY_CONN_AVAILABILITY + c;
-        setKey(key,newAvailability);
-        if(newAvailability==ocpp.AVAILABITY_INOPERATIVE) {
-            this.setConnectorStatus(c,ocpp.CONN_UNAVAILABLE,true);
+        setKey(key, newAvailability);
+        if (newAvailability == ocpp.AVAILABITY_INOPERATIVE) {
+            this.setConnectorStatus(c, ocpp.CONN_UNAVAILABLE, true);
         }
-        else if(newAvailability==ocpp.AVAILABITY_INOPERATIVE) {
-            this.setConnectorStatus(c,ocpp.CONN_AVAILABLE,true);
+        else if (newAvailability == ocpp.AVAILABITY_INOPERATIVE) {
+            this.setConnectorStatus(c, ocpp.CONN_AVAILABLE, true);
         }
-        if(this._availabilityChangeCb) {
-            this._availabilityChangeCb(c,newAvailability);
+        if (this._availabilityChangeCb) {
+            this._availabilityChangeCb(c, newAvailability);
         }
-        if (Number(c)==0) {
-            this.setConnectorAvailability(1,newAvailability);
-            this.setConnectorAvailability(2,newAvailability);
+        if (Number(c) == 0) {
+            this.setConnectorAvailability(1, newAvailability);
+            this.setConnectorAvailability(2, newAvailability);
         }
     }
 }
