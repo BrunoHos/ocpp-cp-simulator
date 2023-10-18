@@ -230,9 +230,9 @@ $( document ).ready(function() {
         }*/
     });
 
-    $('#REMOTE_START_RESPONSE').on('change', () => {
-        const value = document.getElementById("REMOTE_START_RESPONSE").value;
-        _cp._remoteStartResponse = value;
+    $('#REMOTE_START_STOP_RESPONSE').on('change', () => {
+        const value = document.getElementById("REMOTE_START_STOP_RESPONSE").value;
+        _cp._remoteStartStopResponse = value;
     });
     
     logMsg("OCPP Simulator ready");

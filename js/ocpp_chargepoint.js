@@ -108,7 +108,7 @@ export default class ChargePoint {
         this._loggingCb = null;
 
         // Either "Accepted" or "Rejected"
-        this._remoteStartResponse = "Accepted";
+        this._remoteStartStopResponse = "Accepted";
         this._remoteStartDelaySeconds = 0;
     }
 
@@ -178,10 +178,10 @@ export default class ChargePoint {
                 const tagId = payload.idTag;
                 this.logMsg("Reception of a RemoteStartTransaction request for tag " + tagId);
 
-                const rstConf = JSON.stringify([3, id, { "status": this._remoteStartResponse}])
+                const rstConf = JSON.stringify([3, id, { "status": this._remoteStartStopResponse}])
                 this.wsSendData(rstConf);
                 
-                if(this._remoteStartResponse == "Rejected") {
+                if(this._remoteStartStopResponse == "Rejected") {
                     break;
                 }
 
@@ -195,7 +195,11 @@ export default class ChargePoint {
             case "RemoteStopTransaction":
                 var stop_id = payload.transactionId;
                 this.logMsg("Reception of a RemoteStopTransaction request for transaction " + stop_id);
-                this.wsSendData(respOk);
+                const respConf = JSON.stringify([3, id, { "status": this._remoteStartStopResponse}])
+                this.wsSendData(respConf);
+                if(this._remoteStartStopResponse == "Rejected") {
+                    break;
+                }
                 this.stopTransactionWithId(stop_id);
                 break;
 
