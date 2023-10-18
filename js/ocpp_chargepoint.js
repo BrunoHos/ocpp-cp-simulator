@@ -106,6 +106,10 @@ export default class ChargePoint {
         this._statusChangeCb = null;
         this._availabilityChangeCb = null;
         this._loggingCb = null;
+
+        // Either "Accepted" or "Rejected"
+        this._remoteStartResponse = "Accepted";
+        this._remoteStartDelaySeconds = 0;
     }
 
     //
@@ -158,7 +162,7 @@ export default class ChargePoint {
     //
     // Handle a command coming from the OCPP server
     //
-    handleCallRequest(id, request, payload) {
+    async handleCallRequest(id, request, payload) {
         var respOk = JSON.stringify([3, id, { "status": "Accepted" }]);
         var connectorId = 0;
         switch (request) {
@@ -171,14 +175,20 @@ export default class ChargePoint {
                 break;
 
             case "RemoteStartTransaction":
-                console.log("RemoteStartTransaction");
-                //Need to get idTag, connectorId (map - ddata[3])
-                var tagId = payload.idTag;
+                const tagId = payload.idTag;
                 this.logMsg("Reception of a RemoteStartTransaction request for tag " + tagId);
-                // add Accept and reject logic
-                this.wsSendData(respOk);
-                // handle both cases where cable is already plugged in 
-                // or when the user plugs in the cable after 10 seconds
+
+                const rstConf = JSON.stringify([3, id, { "status": this._remoteStartResponse}])
+                this.wsSendData(rstConf);
+                
+                if(this._remoteStartResponse == "Rejected") {
+                    break;
+                }
+
+                // Simulate time it takes for user to plug in charger
+                this.logMsg(`Simulating ${this._remoteStartDelaySeconds} sec delay for user to plug in charger`);
+                await new Promise(resolve => setTimeout(resolve, 1000 * this._remoteStartDelaySeconds))
+                
                 this.startTransaction(tagId);
                 break;
 
@@ -191,7 +201,7 @@ export default class ChargePoint {
 
             case "TriggerMessage":
                 var requestedMessage = payload.requestedMessage;
-                // connectorId is optionnal thus must check if it is provided
+                // connectorId is optional thus must check if it is provided
                 if (payload["connectorId"]) {
                     connectorId = payload["connectorId"];
                 }
@@ -245,7 +255,9 @@ export default class ChargePoint {
     //
     handleCallResult(payload) {
         var la = this.getLastAction();
-        if (la == "BootNotification") {
+        switch(la) {
+
+        case ocpp.BOOT_NOTIFICATION:
             if (payload.status == 'Accepted') {
                 this.logMsg("Connection accepted");
                 var hb_interval = payload.interval;
@@ -256,8 +268,8 @@ export default class ChargePoint {
                 this.logMsg("Connection refused by server");
                 this.wsDisconnect();
             }
-        }
-        else if (la == "Authorize") {
+            break;
+        case ocpp.AUTHORIZE:
             if (payload.idTagInfo.status == 'Invalid') {
                 this.logMsg('Authorization failed');
             }
@@ -265,12 +277,25 @@ export default class ChargePoint {
                 this.logMsg('Authorization OK');
                 this.setStatus(ocpp.CP_AUTHORIZED);
             }
-        }
-        else if (la == "startTransaction") {
+            break;
+        case ocpp.START_TRANSACTION:
             var transactionId = payload.transactionId;
+            if (!transactionId) { 
+                // doing this so StatusNotifications like "CHARGING" doesnt override transaction id
+                break; 
+            }
             setSessionKey('TransactionId', transactionId);
             this.setStatus(ocpp.CP_INTRANSACTION, 'TransactionId: ' + transactionId)
             this.logMsg("Transaction id is " + transactionId);
+            break;
+        case ocpp.STOP_TRANSACTION:
+            // assuming id 1 for now.
+            const connectorId = 1;
+            this.setConnectorStatus(connectorId, ocpp.CONN_AVAILABLE)
+            break;
+
+        default:
+            this.logMsg("NOT IMPLEMENTED in handleCallResult in ocpp_chargepont.js, payload: " + JSON.stringify(payload));
         }
     }
 
@@ -302,11 +327,10 @@ export default class ChargePoint {
     // @param tagId the id of the RFID tag currently authorized on the CP
     //
     startTransaction(tagId, connectorId = 1, reservationId = 0) {
-        this.setLastAction("startTransaction");
         this.setStatus(ocpp.CP_INTRANSACTION);
         var mv = this.meterValue();
         var id = generateId();
-        var strtT = JSON.stringify([2, id, "StartTransaction", {
+        var strtT = JSON.stringify([2, id, ocpp.START_TRANSACTION, {
             "connectorId": connectorId,
             "idTag": tagId,
             "meterStart": mv,
@@ -315,7 +339,8 @@ export default class ChargePoint {
         }]);
         this.logMsg("Starting Transaction for tag " + tagId + " (connector:" + connectorId + ", meter value=" + mv + ")");
         this.wsSendData(strtT);
-        this.setConnectorStatus(connectorId, ocpp.CONN_CHARGING);
+        this.setConnectorStatus(connectorId, ocpp.CONN_CHARGING, true);
+        this.setLastAction(ocpp.START_TRANSACTION);
     }
 
     //
@@ -323,7 +348,7 @@ export default class ChargePoint {
     // @param tagId the id of the RFID tag currently authorized on the CP
     //
     stopTransaction(tagId) {
-        var transactionId = getSessionKey("TransactionId");
+        var transactionId = parseInt(getSessionKey("TransactionId"));
         this.stopTransactionWithId(transactionId, tagId);
     }
 
@@ -333,7 +358,7 @@ export default class ChargePoint {
     // @param tagId the id of the RFID tag currently authorized on the CP
     //
     stopTransactionWithId(transactionId, tagId = "DEADBEEF") {
-        this.setLastAction("stopTransaction");
+        this.setLastAction(ocpp.STOP_TRANSACTION);
         this.setStatus(ocpp.CP_AUTHORIZED);
         var mv = this.meterValue();
         this.logMsg("Stopping Transaction with id " + transactionId + " (meterValue=" + mv + ")");
@@ -348,7 +373,7 @@ export default class ChargePoint {
         }
         var stpT = JSON.stringify([2, id, "StopTransaction", stopParams]);
         this.wsSendData(stpT);
-        this.setConnectorStatus(1, ocpp.CONN_AVAILABLE);
+        this.setConnectorStatus(1, ocpp.CONN_FINISHING);
     }
 
     //
@@ -385,7 +410,7 @@ export default class ChargePoint {
     //
     sendBootNotification() {
         this.logMsg('Sending BootNotification');
-        this.setLastAction("BootNotification");
+        this.setLastAction(ocpp.BOOT_NOTIFICATION);
         var id = generateId();
         var bn_req = JSON.stringify([2, id, "BootNotification", {
             "chargePointVendor": "Elmo",
@@ -502,7 +527,7 @@ export default class ChargePoint {
             // 
             this._websocket.onmessage = function (msg) {
                 console.log("RECEIVE: " + msg.data);
-                var ddata = (JSON.parse(msg.data));
+                var ddata = JSON.parse(msg.data);
 
                 // Decrypt Message Type
                 var msgType = ddata[0];
@@ -574,19 +599,19 @@ export default class ChargePoint {
     //
     // update the server with the internal meter value
     //
-    sendMeterValue(c = 0) {
+    sendMeterValue(connectorId = 0) {
         var mvreq = {};
         this.setLastAction("MeterValues");
         var meter = getSessionKey(ocpp.KEY_METER_VALUE);
         var id = generateId();
-        var ssid = getSessionKey('TransactionId');
+        var transactionId =  parseInt(getSessionKey('TransactionId'));
         mvreq = JSON.stringify([
             2,
             id,
             "MeterValues",
             {
-                "connectorId": c,
-                "transactionId": ssid,
+                "connectorId": connectorId,
+                "transactionId": transactionId,
                 "meterValue": [{
                     "sampledValue": [
                         {
@@ -602,7 +627,7 @@ export default class ChargePoint {
                 }]
             }
         ]);
-        this.logMsg("Send Meter Values: " + meter + " (connector " + c + ")");
+        this.logMsg("Send Meter Values: " + meter + " (connector " + connectorId + ")");
         this.wsSendData(mvreq);
     }
 

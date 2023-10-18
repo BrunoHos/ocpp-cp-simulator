@@ -28,6 +28,13 @@ export const CP_INTRANSACTION = 'in_transaction';
 export const CONN_AVAILABLE   = 'Available';
 export const CONN_CHARGING    = 'Charging';
 export const CONN_UNAVAILABLE = 'Unavailable';
+export const CONN_FINISHING = "Finishing";
+
+// OCPP Operations
+export const START_TRANSACTION = "StartTransaction";
+export const STOP_TRANSACTION = "StopTransaction";
+export const AUTHORIZE = "Authorize";
+export const BOOT_NOTIFICATION = "BootNotification";
 
 // Availability status
 export const AVAILABITY_OPERATIVE   = 'Operative';

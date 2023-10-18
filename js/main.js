@@ -207,6 +207,9 @@ $( document ).ready(function() {
     $('#status1').click(function () {
         _cp.setConnectorStatus(1,$("#STATUS_CON1").val(),true);
     });
+    $('#REMOTE_START_DELAY').change(function () {
+        _cp._remoteStartDelaySeconds = $("#REMOTE_START_DELAY").val();
+    });
 
     $('#data_transfer').click(function () {
         /*
@@ -225,6 +228,11 @@ $( document ).ready(function() {
         /* if (_websocket) {
             _websocket.close(3001);
         }*/
+    });
+
+    $('#REMOTE_START_RESPONSE').on('change', () => {
+        const value = document.getElementById("REMOTE_START_RESPONSE").value;
+        _cp._remoteStartResponse = value;
     });
     
     logMsg("OCPP Simulator ready");
