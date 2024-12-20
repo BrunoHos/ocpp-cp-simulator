@@ -19,6 +19,7 @@ var _cp = new ChargePoint();
 
 // Log message to the JS Console and into the Log TextArea 
 function logMsg(msg) {
+    msg = "["+ luxon.DateTime.utc().toISO() + "] "+ msg;
     console.log(msg);
     var html_console = $('#console');
     html_console.append("&#10;" + msg);
@@ -107,16 +108,16 @@ function statusChangeCb(s,msg) {
         case ocpp.CP_ERROR:
             $('#badge_error').show();
             if (!isEmpty(msg)) {
-                logMsg(msg)
+                logMsg("[ERROR] " + msg)
             }
             break;
         default:
             $('#badge_error').show();
             if (!isEmpty(msg)) {
-                logMsg(msg)
+                logMsg("[ERROR] " + msg)
             }
             else {
-                logMsg("ERROR: Unknown status")
+                logMsg("[ERROR] Unknown status")
             }
     }
 }
@@ -235,5 +236,5 @@ $( document ).ready(function() {
         _cp._remoteStartStopResponse = value;
     });
     
-    logMsg("OCPP Simulator ready");
+    logMsg("[OCPP] Simulator ready");
 });

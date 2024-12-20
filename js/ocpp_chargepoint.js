@@ -6,31 +6,7 @@ import * as ocpp from './ocpp_constants.js'
 // Utility functions
 //
 //
-function formatDate(date) {
-    var day = String(date.getDate()),
-        monthIndex = String(date.getMonth() + 1),
-        year = date.getFullYear(),
-        h = date.getHours(),
-        m = String(date.getMinutes()),
-        s = String(date.getSeconds());
 
-    if (day.length < 2) {
-        day = ('0' + day.slice(-2));
-    }
-    if (monthIndex.length < 2) {
-        monthIndex = ('0' + monthIndex.slice(-2));
-    }
-    if (h.length < 2) {
-        h = ('0' + h.slice(-2));
-    }
-    if (m.length < 2) {
-        m = ('0' + m.slice(-2));
-    }
-    if (s.length < 2) {
-        s = ('0' + s.slice(-2));
-    }
-    return year + '-' + monthIndex + '-' + day + 'T' + h + ':' + m + ':' + s + 'Z';
-}
 
 function generateId() {
     const possible = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
@@ -300,6 +276,12 @@ export default class ChargePoint {
         case ocpp.HEARTBEAT:
             // do nothing
             break;
+        case ocpp.METERVALUES:
+            // do nothing
+            break; 
+        case ocpp.STATUSNOTIFICATION:
+            // do nothing
+            break;
         default:
             this.logMsg("NOT IMPLEMENTED in handleCallResult in ocpp_chargepont.js LastAction: " + la + " payload: " + JSON.stringify(payload));
         }
@@ -366,7 +348,7 @@ export default class ChargePoint {
     // @param transactionId the id of the transaction to stop
     // @param tagId the id of the RFID tag currently authorized on the CP
     //
-    stopTransactionWithId(transactionId, tagId = "DEADBEEF") {
+    async stopTransactionWithId(transactionId, tagId = "DEADBEEF") {
         this.setLastAction(ocpp.STOP_TRANSACTION);
         this.setStatus(ocpp.CP_AUTHORIZED);
         var mv = this.meterValue();
@@ -382,7 +364,12 @@ export default class ChargePoint {
         }
         var stpT = JSON.stringify([2, id, "StopTransaction", stopParams]);
         this.wsSendData(stpT);
+        //wait 1s
+        await new Promise(resolve => setTimeout(resolve, 1000))
         this.setConnectorStatus(1, ocpp.CONN_FINISHING, true);
+
+        await new Promise(resolve => setTimeout(resolve, 1000))
+        this.setConnectorStatus(1, ocpp.CONN_AVAILABLE, true);
     }
 
     //
@@ -473,7 +460,10 @@ export default class ChargePoint {
     // @data the data to send 
     //
     wsSendData(data) {
-        console.log("SEND: " + data);
+        console.log("["+ luxon.DateTime.utc().toISO() + "] [ -> ] " + data);
+        //if (this._loggingCb) {
+        //    this._loggingCb("[ -> ] " + data);
+        //}
         if (this._websocket) {
             this._websocket.send(data);
         }
@@ -535,7 +525,10 @@ export default class ChargePoint {
             // Decode the type of message and pass it to the appropriate handler
             // 
             this._websocket.onmessage = function (msg) {
-                console.log("RECEIVE: " + msg.data);
+                console.log("["+ luxon.DateTime.utc().toISO() + "] [ <- ] " + msg.data);
+                //if (self._loggingCb) {
+                //    self._loggingCb("[ <- ] " +  msg.data);
+                //}
                 var ddata = JSON.parse(msg.data);
 
                 // Decrypt Message Type
@@ -612,7 +605,7 @@ export default class ChargePoint {
     //
     // update the server with the internal meter value
     //
-    sendMeterValue(connectorId = 0) {
+    sendMeterValue(connectorId = 1) {
         var mvreq = {};
         this.setLastAction("MeterValues");
         var meter = getSessionKey(ocpp.KEY_METER_VALUE);
@@ -630,10 +623,9 @@ export default class ChargePoint {
                         {
                             "value": meter,
                             "context": "Sample.Periodic",
-                            "format": "Raw",
-                            "measurand": "Current.Offered",
+                            "measurand": "Energy.Active.Import.Register",
                             "location": "Outlet",
-                            "unit": "A"
+                            "unit": "kWh"
                         }
                     ],
                     "timestamp": luxon.DateTime.utc().toISO(),
