@@ -258,7 +258,7 @@ export default class ChargePoint {
     // @param payload The payload part of the OCPP message
     //
     handleCallResult(payload) {
-        var la = this.getLastAction();
+        const la = this.getLastAction();
         switch(la) {
 
         case ocpp.BOOT_NOTIFICATION:
@@ -297,9 +297,11 @@ export default class ChargePoint {
             const connectorId = 1;
             this.setConnectorStatus(connectorId, ocpp.CONN_AVAILABLE)
             break;
-
+        case ocpp.HEARTBEAT:
+            // do nothing
+            break;
         default:
-            this.logMsg("NOT IMPLEMENTED in handleCallResult in ocpp_chargepont.js, payload: " + JSON.stringify(payload));
+            this.logMsg("NOT IMPLEMENTED in handleCallResult in ocpp_chargepont.js LastAction: " + la + " payload: " + JSON.stringify(payload));
         }
     }
 
@@ -319,8 +321,8 @@ export default class ChargePoint {
     authorize(tagId) {
         this.setLastAction("Authorize");
         this.logMsg("Requesting authorization for tag " + tagId);
-        var id = generateId();
-        var Auth = JSON.stringify([2, id, "Authorize", {
+        const id = generateId();
+        const Auth = JSON.stringify([2, id, "Authorize", {
             "idTag": tagId
         }]);
         this.wsSendData(Auth);
@@ -332,15 +334,18 @@ export default class ChargePoint {
     //
     startTransaction(tagId, connectorId = 1, reservationId = 0) {
         this.setStatus(ocpp.CP_INTRANSACTION);
-        var mv = this.meterValue();
-        var id = generateId();
-        var strtT = JSON.stringify([2, id, ocpp.START_TRANSACTION, {
+        const mv = this.meterValue();
+        const id = generateId();
+        const strtTobjekt =[2, id, ocpp.START_TRANSACTION, {
             "connectorId": connectorId,
             "idTag": tagId,
             "meterStart": mv,
-            "timestamp": luxon.DateTime.utc().toISO(),
-            "reservationId": reservationId
-        }]);
+            "timestamp": luxon.DateTime.utc().toISO()
+        }];
+        if (reservationId != 0){
+            strtTobjekt[3].reservationId = reservationId;
+        }
+        const strtT = JSON.stringify(strtTobjekt);
         this.logMsg("Starting Transaction for tag " + tagId + " (connector:" + connectorId + ", meter value=" + mv + ")");
         this.wsSendData(strtT);
         this.setConnectorStatus(connectorId, ocpp.CONN_CHARGING, true);
@@ -377,7 +382,7 @@ export default class ChargePoint {
         }
         var stpT = JSON.stringify([2, id, "StopTransaction", stopParams]);
         this.wsSendData(stpT);
-        this.setConnectorStatus(1, ocpp.CONN_FINISHING);
+        this.setConnectorStatus(1, ocpp.CONN_FINISHING, true);
     }
 
     //
@@ -417,15 +422,15 @@ export default class ChargePoint {
         this.setLastAction(ocpp.BOOT_NOTIFICATION);
         var id = generateId();
         var bn_req = JSON.stringify([2, id, "BootNotification", {
-            "chargePointVendor": "Elmo",
-            "chargePointModel": "Elmo-Virtual1",
-            "chargePointSerialNumber": "elm.001.13.1",
-            "chargeBoxSerialNumber": "elm.001.13.1.01",
-            "firmwareVersion": "0.9.87",
+            "chargePointVendor": "ocpp-cp-simulator",
+            "chargePointModel": "JAVASCRIPT SIMULATOR",
+            "chargePointSerialNumber": "TEST_00000001",
+            "chargeBoxSerialNumber": "TEST_00000001",
+            "firmwareVersion": "1.0.0",
             "iccid": "",
             "imsi": "",
-            "meterType": "ELM NQC-ACDC",
-            "meterSerialNumber": "elm.001.13.1.01"
+            "meterType": "",
+            "meterSerialNumber": ""
         }]);
         this.wsSendData(bn_req);
     }
@@ -449,7 +454,7 @@ export default class ChargePoint {
         if (this._heartbeat) {
             clearInterval(this._heartbeat);
         }
-        this._heartbeat = setInterval(this.sendHeartbeat, period * 1000);
+        this._heartbeat = setInterval(this.sendHeartbeat.bind(this), period * 1000);
     }
 
     //
@@ -558,6 +563,10 @@ export default class ChargePoint {
             // OnClose Callback
             //   
             this._websocket.onclose = function (evt) {
+                if (self._heartbeat) {
+                    clearInterval(self._heartbeat);
+                    self._heartbeat = null;
+                }
                 if (evt.code == 3001) {
                     self.setStatus(ocpp.CP_DISCONNECTED);
                     self.logMsg('Connection closed');
@@ -669,12 +678,9 @@ export default class ChargePoint {
         var id = generateId();
         var sn_req = JSON.stringify([2, id, "StatusNotification", {
             "connectorId": c,
-            "status": st,
             "errorCode": "NoError",
-            "info": "",
-            "timestamp": luxon.DateTime.utc().toISO(),
-            "vendorId": "",
-            "vendorErrorCode": ""
+            "status": st,
+            "timestamp": luxon.DateTime.utc().toISO()
         }]);
         this.logMsg("Sending StatusNotification for connector " + c + ": " + st);
         this.wsSendData(sn_req);

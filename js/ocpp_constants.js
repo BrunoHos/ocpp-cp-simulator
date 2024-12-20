@@ -35,6 +35,7 @@ export const START_TRANSACTION = "StartTransaction";
 export const STOP_TRANSACTION = "StopTransaction";
 export const AUTHORIZE = "Authorize";
 export const BOOT_NOTIFICATION = "BootNotification";
+export const HEARTBEAT = "Heartbeat";
 
 // Availability status
 export const AVAILABITY_OPERATIVE   = 'Operative';
