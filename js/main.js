@@ -129,6 +129,10 @@ function availabilityChangeCb(c,s) {
     $(dom_id).val(_cp.connectorStatus(c));
 }
 
+function meterValueChangeCb(meterValue){
+    $("#metervalue").val(meterValue); 
+}
+
 //
 // Entry point of the simulator
 // (attach callbacks to each button and wait for user action)
@@ -138,6 +142,7 @@ $( document ).ready(function() {
     _cp.setLoggingCallback(logMsg);
     _cp.setStatusChangeCallback(statusChangeCb);
     _cp.setAvailabilityChangeCallback(availabilityChangeCb);
+    _cp.setMeterValueChangeCallback(meterValueChangeCb);
     _cp.setStatus(ocpp.CP_DISCONNECTED);
 
     // Init the setting form
@@ -147,6 +152,10 @@ $( document ).ready(function() {
     $("#metervalue").val(_cp.meterValue());
     availabilityChangeCb(0,_cp.availability(0));
     availabilityChangeCb(1,_cp.availability(1));
+
+    $('#REMOTE_START_DELAY').val(_cp._remoteStartDelaySeconds);
+    $('#REMOTE_METER_VALUE').val (_cp._remoteMeterValue);
+
 
     // Define settings call back
     $('#cpparams').submit(function(e) {
@@ -186,7 +195,7 @@ $( document ).ready(function() {
 
     $("#mvplus").click(function(){
         var meter = $("#metervalue").val();
-        meter = parseInt(meter) + 10;
+        meter = parseInt(meter) + 100;
         $("#metervalue").val(meter); 
         _cp.setMeterValue(meter,false);
     });
@@ -211,6 +220,12 @@ $( document ).ready(function() {
     $('#REMOTE_START_DELAY').change(function () {
         _cp._remoteStartDelaySeconds = $("#REMOTE_START_DELAY").val();
     });
+
+    $('#REMOTE_METER_VALUE').change(function () {
+        _cp._remoteMeterValue = parseInt($("#REMOTE_METER_VALUE").val());
+    });
+
+    
 
     $('#data_transfer').click(function () {
         /*

@@ -81,11 +81,13 @@ export default class ChargePoint {
         this._heartbeat = null;
         this._statusChangeCb = null;
         this._availabilityChangeCb = null;
+        this._meterValueChangeCallback= null;
         this._loggingCb = null;
 
         // Either "Accepted" or "Rejected"
         this._remoteStartStopResponse = "Accepted";
-        this._remoteStartDelaySeconds = 0;
+        this._remoteStartDelaySeconds = 1;
+        this._remoteMeterValue = 100; 
     }
 
     //
@@ -111,6 +113,10 @@ export default class ChargePoint {
     //
     setAvailabilityChangeCallback(cb) {
         this._availabilityChangeCb = cb;
+    }
+
+    setMeterValueChangeCallback(cb) {
+        this._meterValueChangeCallback = cb;
     }
 
     //
@@ -173,9 +179,18 @@ export default class ChargePoint {
                 this.logMsg("Reception of a RemoteStopTransaction request for transaction " + stop_id);
                 const respConf = JSON.stringify([3, id, { "status": this._remoteStartStopResponse}])
                 this.wsSendData(respConf);
+
                 if(this._remoteStartStopResponse == "Rejected") {
                     break;
                 }
+                
+                let meterStop = this._remoteMeterValue  +  this.meterValue();
+                this.setMeterValue(meterStop, false );
+
+                if (this._meterValueChangeCallback) {
+                    this._meterValueChangeCallback(meterStop);
+                }
+
                 this.stopTransactionWithId(stop_id);
                 break;
 
@@ -596,6 +611,9 @@ export default class ChargePoint {
     // @param updateServer if set to true, update the server with the new meter value
     //
     setMeterValue(v, updateServer = false) {
+        
+        this.logMsg("LOG ONLY TEST setMeterValue: " + v);
+
         setSessionKey(ocpp.KEY_METER_VALUE, v);
         if (updateServer) {
             this.sendMeterValue();
