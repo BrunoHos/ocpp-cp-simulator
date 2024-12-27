@@ -15,6 +15,9 @@ export const KEY_CONN_AVAILABILITY   = 'conn_availability';
 export const KEY_CONN0_AVAILABILITY  = 'conn_availability0';
 export const KEY_CONN1_AVAILABILITY  = 'conn_availability1';
 export const KEY_CONN2_AVAILABILITY  = 'conn_availability2';
+export const KEY_LAST_ACTION = 'LastAction';
+export const KEY_LAST_TAG_ID = 'LastTagId';
+export const KEY_TRANSACTION_ID ='TransactionId';
     
 // Charge Point Status
 export const CP_ERROR         = 'error';
@@ -26,6 +29,7 @@ export const CP_INTRANSACTION = 'in_transaction';
 
 // Connector status
 export const CONN_AVAILABLE   = 'Available';
+export const CONN_PREPARING = "Preparing";
 export const CONN_CHARGING    = 'Charging';
 export const CONN_UNAVAILABLE = 'Unavailable';
 export const CONN_FINISHING = "Finishing";

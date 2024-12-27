@@ -181,12 +181,12 @@ $( document ).ready(function() {
 
     $('#start').click(function () {
         _cp.setMeterValue($("#metervalue").val(),false);
-        _cp.startTransaction($("#TAG").val());
+        _cp.startTransaction();
     });
 
     $('#stop').click(function () {
         _cp.setMeterValue($("#metervalue").val(),false);
-        _cp.stopTransaction($("#TAG").val());
+        _cp.stopTransaction();
     });
 
     $('#mv').click(function () {

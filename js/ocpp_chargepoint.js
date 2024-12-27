@@ -49,7 +49,7 @@ function getSessionKey(key, default_value = "") {
 // @param value The key value
 //
 function setKey(key, value) {
-    localStorage.setItem(key, value)
+    localStorage.setItem(key, value);
 }
 
 //
@@ -62,7 +62,7 @@ function getKey(key, default_value = "") {
     if (!v) {
         v = default_value;
     }
-    return v
+    return v;
 }
 
 //
@@ -146,7 +146,7 @@ export default class ChargePoint {
     //
     async handleCallRequest(id, request, payload) {
         var respOk = JSON.stringify([3, id, { "status": "Accepted" }]);
-        var connectorId = 0;
+        let connectorId = 0;
         switch (request) {
             case "Reset":
                 //Reset type can be SOFT, HARD
@@ -159,6 +159,7 @@ export default class ChargePoint {
             case "RemoteStartTransaction":
                 const tagId = payload.idTag;
                 this.logMsg("Reception of a RemoteStartTransaction request for tag " + tagId);
+                setSessionKey(ocpp.KEY_LAST_TAG_ID, tagId);
 
                 const rstConf = JSON.stringify([3, id, { "status": this._remoteStartStopResponse}])
                 this.wsSendData(rstConf);
@@ -167,11 +168,16 @@ export default class ChargePoint {
                     break;
                 }
 
+                connectorId = 1;
+                await new Promise(resolve => setTimeout(resolve, 500));
+                this.authorize(tagId);
                 // Simulate time it takes for user to plug in charger
                 this.logMsg(`Simulating ${this._remoteStartDelaySeconds} sec delay for user to plug in charger`);
-                await new Promise(resolve => setTimeout(resolve, 1000 * this._remoteStartDelaySeconds))
-                
-                this.startTransaction(tagId);
+                await new Promise(resolve => setTimeout(resolve, 1000 * this._remoteStartDelaySeconds));
+                this.setConnectorStatus(connectorId, ocpp.CONN_PREPARING, true);
+
+                await new Promise(resolve => setTimeout(resolve, 300));
+                this.startTransaction();
                 break;
 
             case "RemoteStopTransaction":
@@ -190,8 +196,7 @@ export default class ChargePoint {
                 if (this._meterValueChangeCallback) {
                     this._meterValueChangeCallback(meterStop);
                 }
-
-                this.stopTransactionWithId(stop_id);
+                this.stopTransactionWithId(stop_id, 'Remote');
                 break;
 
             case "TriggerMessage":
@@ -279,7 +284,7 @@ export default class ChargePoint {
                 // doing this so StatusNotifications like "CHARGING" doesnt override transaction id
                 break; 
             }
-            setSessionKey('TransactionId', transactionId);
+            setSessionKey(ocpp.KEY_TRANSACTION_ID, transactionId);
             this.setStatus(ocpp.CP_INTRANSACTION, 'TransactionId: ' + transactionId)
             this.logMsg("Transaction id is " + transactionId);
             break;
@@ -316,7 +321,8 @@ export default class ChargePoint {
     // @param tagId the id of the RFID tag to authorize
     //
     authorize(tagId) {
-        this.setLastAction("Authorize");
+        this.setLastAction(ocpp.AUTHORIZE);
+        setSessionKey(ocpp.KEY_LAST_TAG_ID, tagId);
         this.logMsg("Requesting authorization for tag " + tagId);
         const id = generateId();
         const Auth = JSON.stringify([2, id, "Authorize", {
@@ -327,9 +333,14 @@ export default class ChargePoint {
 
     //
     // Send a StartTransaction call to the OCPP Server
-    // @param tagId the id of the RFID tag currently authorized on the CP
+    // tagId in the session.  The id of the RFID tag currently authorized on the CP
     //
-    startTransaction(tagId, connectorId = 1, reservationId = 0) {
+    async startTransaction() {
+
+        const tagId  = getSessionKey(ocpp.KEY_LAST_TAG_ID);
+        const connectorId = 1;
+        const reservationId = 0;
+
         this.setStatus(ocpp.CP_INTRANSACTION);
         const mv = this.meterValue();
         const id = generateId();
@@ -344,30 +355,42 @@ export default class ChargePoint {
         }
         const strtT = JSON.stringify(strtTobjekt);
         this.logMsg("Starting Transaction for tag " + tagId + " (connector:" + connectorId + ", meter value=" + mv + ")");
-        this.wsSendData(strtT);
-        this.setConnectorStatus(connectorId, ocpp.CONN_CHARGING, true);
         this.setLastAction(ocpp.START_TRANSACTION);
+        this.wsSendData(strtT);
+        
+        //wait 0.3s
+        await new Promise(resolve => setTimeout(resolve, 300))
+        this.setConnectorStatus(connectorId, ocpp.CONN_CHARGING, true);
+
+      
     }
 
     //
     // Send a StopTransaction call to the OCPP Server
-    // @param tagId the id of the RFID tag currently authorized on the CP
     //
-    stopTransaction(tagId) {
-        var transactionId = parseInt(getSessionKey("TransactionId"));
-        this.stopTransactionWithId(transactionId, tagId);
+    stopTransaction() {
+        const transactionId = parseInt(getSessionKey(ocpp.KEY_TRANSACTION_ID));
+        this.stopTransactionWithId(transactionId);
     }
 
     //
     // Send a StopTransaction call to the OCPP Server
     // @param transactionId the id of the transaction to stop
-    // @param tagId the id of the RFID tag currently authorized on the CP
+    // @param reason the reason of the transaction to stop Local or Remote
     //
-    async stopTransactionWithId(transactionId, tagId = "DEADBEEF") {
+    // tagId ar in the session. the id of the RFID tag currently authorized on the CP
+    //    
+    async stopTransactionWithId(transactionId, reason =  'Local') {
+
+        const tagId  = getSessionKey(ocpp.KEY_LAST_TAG_ID, "DEADBEEF");
+        var mv = this.meterValue();
+
+
+
         this.setLastAction(ocpp.STOP_TRANSACTION);
         this.setStatus(ocpp.CP_AUTHORIZED);
-        var mv = this.meterValue();
-        this.logMsg("Stopping Transaction with id " + transactionId + " (meterValue=" + mv + ")");
+
+        this.logMsg("Stopping Transaction id: " + transactionId + " tag: " + tagId  + " meterStop:" + mv );
         var id = generateId();
         var stopParams = {
             "transactionId": transactionId,
@@ -377,6 +400,12 @@ export default class ChargePoint {
         if (!isEmpty(tagId)) {
             stopParams["idTag"] = tagId;
         }
+
+
+        if (!isEmpty(reason)) {
+            stopParams["reason"] = reason;
+        }
+
         var stpT = JSON.stringify([2, id, "StopTransaction", stopParams]);
         this.wsSendData(stpT);
         //wait 1s
@@ -439,11 +468,11 @@ export default class ChargePoint {
 
     // @todo: Shitty code to remove asap => real transaction support
     setLastAction(action) {
-        setSessionKey("LastAction", action);
+        setSessionKey(ocpp.KEY_LAST_ACTION, action);
     }
     // @todo: Shitty code to remove asap
     getLastAction() {
-        return getSessionKey("LastAction");
+        return getSessionKey(ocpp.KEY_LAST_ACTION);
     }
 
     //
@@ -505,7 +534,7 @@ export default class ChargePoint {
             this._websocket.close(3001);
         }
         else {
-
+            this.logMsg('Connect to: ' + wsurl + "" + cpid );
             this._websocket = new WebSocket(wsurl + "" + cpid, ["ocpp1.6", "ocpp1.5"]);
             var self = this
 
@@ -611,9 +640,6 @@ export default class ChargePoint {
     // @param updateServer if set to true, update the server with the new meter value
     //
     setMeterValue(v, updateServer = false) {
-        
-        this.logMsg("LOG ONLY TEST setMeterValue: " + v);
-
         setSessionKey(ocpp.KEY_METER_VALUE, v);
         if (updateServer) {
             this.sendMeterValue();
@@ -628,7 +654,7 @@ export default class ChargePoint {
         this.setLastAction("MeterValues");
         var meter = getSessionKey(ocpp.KEY_METER_VALUE);
         var id = generateId();
-        var transactionId =  parseInt(getSessionKey('TransactionId'));
+        var transactionId =  parseInt(getSessionKey(ocpp.KEY_TRANSACTION_ID));
         mvreq = JSON.stringify([
             2,
             id,
